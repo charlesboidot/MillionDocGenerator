@@ -15,6 +15,8 @@ public class MDGenerator {
 
 	static final String DEFAULT_PATH = "/default-domain/UserWorkspaces/Administrator/";
 
+	static final int NUMBER_OF_DOCUMENTS = 1000;
+
 	public static void main(String[] args) {
 
 		Builder builder = new NuxeoClient.Builder();
@@ -22,12 +24,15 @@ public class MDGenerator {
 				.connectTimeout(0).timeout(0);
 		NuxeoClient nuxeoClient = builder.connect();
 
-//		for (int i = 0; i < 100; i++) {
-//			uploadFileDocumentWithBlob(i, nuxeoClient);
-//		}
+		for (int i = 0; i < NUMBER_OF_DOCUMENTS*0.5; i++) {
+			uploadFileDocumentWithBlob(i, nuxeoClient);
+		}
 
-		for (int i = 0; i < 5; i++) {
+		for (int i = 0; i < NUMBER_OF_DOCUMENTS*0.3; i++) {
 			uploadSuperFileDocumentWithBlob(i, nuxeoClient);
+		}
+		for (int i = 0; i < NUMBER_OF_DOCUMENTS*0.2; i++) {
+			uploadCustomFileDocumentWithBlob(i, nuxeoClient);
 		}
 	}
 
@@ -37,20 +42,39 @@ public class MDGenerator {
 
 		File file = new File("../BinaryStore/file_" + fileNumber + ".txt");
 		FileBlob blob = new FileBlob(file);
-		batchUpload.upload(Integer.toString(fileNumber), blob);
+		batchUpload.upload(Integer.toString(0), blob);
 
 		String remoteTitle = "File-" + fileNumber;
 		Document NuxeoDoc = Document.createWithName(remoteTitle, "File");
 		NuxeoDoc.setPropertyValue("dc:title", remoteTitle);
 
-		NuxeoDoc.setPropertyValue("file:content", batchUpload.getBatchBlob(Integer.toString(fileNumber)));
+		NuxeoDoc.setPropertyValue("file:content", batchUpload.getBatchBlob(Integer.toString(0)));
+		NuxeoDoc = nxClient.repository().createDocumentByPath(DEFAULT_PATH, NuxeoDoc);
+	}
+
+	protected static void uploadCustomFileDocumentWithBlob(int fileNumber, NuxeoClient nxClient) {
+		Random random = new Random();
+		int customNum = random.nextInt(NUMBER_OF_DOCUMENTS-1);
+
+		BatchUploadManager batchUploadManager = nxClient.batchUploadManager();
+		BatchUpload batchUpload = batchUploadManager.createBatch();
+
+		File file = new File("../BinaryStore/file_" + customNum + ".txt");
+		FileBlob blob = new FileBlob(file);
+		batchUpload.upload(Integer.toString(0), blob);
+
+		String remoteTitle = "CustomFile-" + fileNumber;
+		Document NuxeoDoc = Document.createWithName(remoteTitle, "CustomFile");
+		NuxeoDoc.setPropertyValue("dc:title", remoteTitle);
+
+		NuxeoDoc.setPropertyValue("customfile:CustomFileBlob", batchUpload.getBatchBlob(Integer.toString(0)));
 		NuxeoDoc = nxClient.repository().createDocumentByPath(DEFAULT_PATH, NuxeoDoc);
 	}
 
 	protected static void uploadSuperFileDocumentWithBlob(int fileNumber, NuxeoClient nxClient) {
 		Random random = new Random();
-		int contentNum = random.nextInt(99);
-		int customNum = random.nextInt(99);
+		int contentNum = random.nextInt(NUMBER_OF_DOCUMENTS-1);
+		int customNum = random.nextInt(NUMBER_OF_DOCUMENTS-1);
 
 		BatchUploadManager batchUploadManager = nxClient.batchUploadManager();
 		BatchUpload batchUpload = batchUploadManager.createBatch();
