@@ -15,40 +15,67 @@ import org.nuxeo.client.objects.upload.BatchUploadManager;
 
 public class MDGenerator {
 
+	// Configuration
+
 	static final String DEFAULT_PATH = "/default-domain/workspaces/GarbageCollectorWorkspace/OneMillion";
 
-	static final int NUMBER_OF_THREADS = 10;
+	static final int NUMBER_OF_THREADS = 20;
 
-	static final int NUMBER_OF_DOCUMENTS = 1000;
+	static final int TOTAL_OF_DOCUMENTS = 1000000;
 
-	static final int NUMBER_OF_FILES = NUMBER_OF_DOCUMENTS/2;
+	static final int NUMBER_OF_LOOPS = 100;
 
-	static final int NUMBER_OF_SUPER_FILES = 3*NUMBER_OF_DOCUMENTS/10;
+	static final int NUMBER_OF_FOLDERS = 1000;
 
-	static final int NUMBER_OF_CUSTOM_FILES = 2*NUMBER_OF_DOCUMENTS/10;
+	// Used variables
+
+	static final int NUMBER_OF_DOCUMENTS = TOTAL_OF_DOCUMENTS / NUMBER_OF_LOOPS; // Number of documents per loop
+
+	static final int NUMBER_OF_FILES = NUMBER_OF_DOCUMENTS / 2;
+
+	static final int NUMBER_OF_SUPER_FILES = 3 * NUMBER_OF_DOCUMENTS / 10;
+
+	static final int NUMBER_OF_CUSTOM_FILES = 2 * NUMBER_OF_DOCUMENTS / 10;
 
 	public static void main(String[] args) {
-
-		ExecutorService executor = Executors.newFixedThreadPool(NUMBER_OF_THREADS);
-
-		long startTime = System.currentTimeMillis();
-
+		//////////
 		Builder builder = new NuxeoClient.Builder();
 		builder.url("http://localhost:8080/nuxeo").authentication("Administrator", "Administrator").schemas("*")
 				.connectTimeout(0).timeout(0);
 		NuxeoClient nuxeoClient = builder.connect();
 
-		for (int i =0; i<NUMBER_OF_THREADS;i++) {
-			Runnable worker = new MyThread(i, nuxeoClient);
-			executor.execute(worker);
-		}
-		executor.shutdown();
-		while (!executor.isTerminated()) {}
+		long startTime = System.currentTimeMillis();
 
-		System.out.println("Execution time: "+((double) System.currentTimeMillis()-startTime)/1000+" s");
+		//////////
+
+		for (int k = 70; k < NUMBER_OF_LOOPS; k++) {
+			if (k == 1) {
+				for (int i = 0; i < NUMBER_OF_FOLDERS; i++) {
+					Document NuxeoDoc = Document.createWithName("Folder-" + i, "Folder");
+					NuxeoDoc = nuxeoClient.repository().createDocumentByPath(DEFAULT_PATH, NuxeoDoc);
+				}
+	            System.out.println("Folders generated in " + ((double) System.currentTimeMillis() - startTime) / 1000 + " s");
+			}
+
+			ExecutorService executor = Executors.newFixedThreadPool(NUMBER_OF_THREADS);
+			long loopStartTime = System.currentTimeMillis();
+
+			for (int i = 0; i < NUMBER_OF_THREADS; i++) {
+				Runnable worker = new MyThread(k, i, nuxeoClient);
+				executor.execute(worker);
+			}
+			executor.shutdown();
+			while (!executor.isTerminated()) {
+			}
+			System.out.println("\n" + (k + 1) + "% completed in "
+					+ ((double) System.currentTimeMillis() - loopStartTime) / 1000 + " s\n");
+		}
+
+		System.out.println("Execution time: " + ((double) System.currentTimeMillis() - startTime) / 1000 + " s");
 	}
 
 	protected static void uploadFileDocumentWithBlob(int fileNumber, NuxeoClient nxClient) {
+		String path = DEFAULT_PATH + "/Folder-" + (fileNumber % NUMBER_OF_FOLDERS);
 		BatchUploadManager batchUploadManager = nxClient.batchUploadManager();
 
 		BatchUpload batchUpload = batchUploadManager.createBatch();
@@ -62,12 +89,14 @@ public class MDGenerator {
 		NuxeoDoc.setPropertyValue("dc:title", remoteTitle);
 
 		NuxeoDoc.setPropertyValue("file:content", batchUpload.getBatchBlob(Integer.toString(0)));
-		NuxeoDoc = nxClient.repository().createDocumentByPath(DEFAULT_PATH, NuxeoDoc);
+		NuxeoDoc = nxClient.repository().createDocumentByPath(path, NuxeoDoc);
 	}
 
 	protected static void uploadCustomFileDocumentWithBlob(int fileNumber, NuxeoClient nxClient) {
+		String path = DEFAULT_PATH + "/Folder-" + (fileNumber % NUMBER_OF_FOLDERS);
+
 		Random random = new Random();
-		int customNum = random.nextInt(NUMBER_OF_DOCUMENTS/2-1);
+		int customNum = random.nextInt(NUMBER_OF_DOCUMENTS / 2 - 1);
 
 		BatchUploadManager batchUploadManager = nxClient.batchUploadManager();
 		BatchUpload batchUpload = batchUploadManager.createBatch();
@@ -81,13 +110,15 @@ public class MDGenerator {
 		NuxeoDoc.setPropertyValue("dc:title", remoteTitle);
 
 		NuxeoDoc.setPropertyValue("customfile:CustomFileBlob", batchUpload.getBatchBlob(Integer.toString(0)));
-		NuxeoDoc = nxClient.repository().createDocumentByPath(DEFAULT_PATH, NuxeoDoc);
+		NuxeoDoc = nxClient.repository().createDocumentByPath(path, NuxeoDoc);
 	}
 
 	protected static void uploadSuperFileDocumentWithBlob(int fileNumber, NuxeoClient nxClient) {
+		String path = DEFAULT_PATH + "/Folder-" + (fileNumber % NUMBER_OF_FOLDERS);
+
 		Random random = new Random();
-		int contentNum = random.nextInt(NUMBER_OF_DOCUMENTS/2-1);
-		int customNum = random.nextInt(NUMBER_OF_DOCUMENTS/2-1);
+		int contentNum = random.nextInt(NUMBER_OF_DOCUMENTS / 2 - 1);
+		int customNum = random.nextInt(NUMBER_OF_DOCUMENTS / 2 - 1);
 
 		BatchUploadManager batchUploadManager = nxClient.batchUploadManager();
 		BatchUpload batchUpload = batchUploadManager.createBatch();
@@ -99,7 +130,7 @@ public class MDGenerator {
 		FileBlob customBlob = new FileBlob(customFile);
 
 		batchUpload.upload(Integer.toString(0), contentBlob);
-		batchUpload.upload(Integer.toString(1),  customBlob);
+		batchUpload.upload(Integer.toString(1), customBlob);
 
 		String remoteTitle = "SuperFile-" + fileNumber;
 		Document NuxeoDoc = Document.createWithName(remoteTitle, "SuperFile");
@@ -107,16 +138,19 @@ public class MDGenerator {
 		NuxeoDoc.setPropertyValue("dc:title", remoteTitle);
 		NuxeoDoc.setPropertyValue("file:content", batchUpload.getBatchBlob(Integer.toString(0)));
 		NuxeoDoc.setPropertyValue("superfile:SuperFileBlobs", List.of(batchUpload.getBatchBlob(Integer.toString(1))));
-		NuxeoDoc = nxClient.repository().createDocumentByPath(DEFAULT_PATH, NuxeoDoc);
+		NuxeoDoc = nxClient.repository().createDocumentByPath(path, NuxeoDoc);
 	}
 
 	public static class MyThread implements Runnable {
 
 		private final int threadNumber;
 
+		private final int loopNumber;
+
 		private final NuxeoClient nxClient;
 
-		MyThread(int threadNumber, NuxeoClient nxClient) {
+		MyThread(int loopNumber, int threadNumber, NuxeoClient nxClient) {
+			this.loopNumber = loopNumber;
 			this.threadNumber = threadNumber;
 			this.nxClient = nxClient;
 		}
@@ -124,25 +158,35 @@ public class MDGenerator {
 		@Override
 		public void run() {
 
-			int startIndexFile = threadNumber*NUMBER_OF_FILES/NUMBER_OF_THREADS;
-			int endIndexFile = startIndexFile+NUMBER_OF_FILES/NUMBER_OF_THREADS;
+			int startIndexFile = (loopNumber * NUMBER_OF_FILES) + threadNumber * NUMBER_OF_FILES / NUMBER_OF_THREADS;
+			int endIndexFile = startIndexFile + NUMBER_OF_FILES / NUMBER_OF_THREADS;
 
-			int startIndexCustomFile = threadNumber*NUMBER_OF_CUSTOM_FILES/NUMBER_OF_THREADS;
-			int endIndexCustomFile = startIndexCustomFile+NUMBER_OF_CUSTOM_FILES/NUMBER_OF_THREADS;
+			int startIndexCustomFile = (loopNumber * NUMBER_OF_CUSTOM_FILES)
+					+ threadNumber * NUMBER_OF_CUSTOM_FILES / NUMBER_OF_THREADS;
+			int endIndexCustomFile = startIndexCustomFile + NUMBER_OF_CUSTOM_FILES / NUMBER_OF_THREADS;
 
-			int startIndexSuperFile = threadNumber*NUMBER_OF_SUPER_FILES/NUMBER_OF_THREADS;
-			int endIndexSuperFile = startIndexSuperFile+NUMBER_OF_SUPER_FILES/NUMBER_OF_THREADS;
-			System.out.println("Init....");
+			int startIndexSuperFile = (loopNumber * NUMBER_OF_SUPER_FILES)
+					+ threadNumber * NUMBER_OF_SUPER_FILES / NUMBER_OF_THREADS;
+			int endIndexSuperFile = startIndexSuperFile + NUMBER_OF_SUPER_FILES / NUMBER_OF_THREADS;
+			// System.out.println("Initialising thread " + threadNumber);
 			try {
 				for (int i = startIndexFile; i < endIndexFile; i++) {
 					uploadFileDocumentWithBlob(i, nxClient);
 				}
+				// System.out.println("[Thread " + threadNumber + "] has finished Files
+				// generating files from " + startIndexFile + " to " + endIndexFile + ".");
 				for (int i = startIndexCustomFile; i < endIndexCustomFile; i++) {
 					uploadCustomFileDocumentWithBlob(i, nxClient);
 				}
+				// System.out.println("[Thread " + threadNumber + "] has finished CustomFiles
+				// generating files from " + startIndexCustomFile + " to " + endIndexCustomFile
+				// + ".");
 				for (int i = startIndexSuperFile; i < endIndexSuperFile; i++) {
 					uploadSuperFileDocumentWithBlob(i, nxClient);
 				}
+				// System.out.println("[Thread " + threadNumber + "] has finished SuperFiles
+				// generating files from " + startIndexSuperFile + " to " + endIndexSuperFile +
+				// ".");
 			} catch (Exception e) {
 				System.out.println(e.getMessage());
 			}
